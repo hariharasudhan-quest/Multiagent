@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agentic Coding Agent — Live Dashboard</title>
+    <meta name="description" content="Real-time monitoring dashboard for the agentic coding agent pipeline">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: rgba(20, 20, 32, 0.7);
+            --bg-glass: rgba(255, 255, 255, 0.03);
+            --border: rgba(255, 255, 255, 0.06);
+            --border-glow: rgba(255, 255, 255, 0.1);
+            --text-primary: #e8e8ed;
+            --text-secondary: #8b8b9e;
+            --text-muted: #55556a;
+            --accent-architect: #a78bfa;
+            --accent-architect-bg: rgba(167, 139, 250, 0.1);
+            --accent-coder: #60a5fa;
+            --accent-coder-bg: rgba(96, 165, 250, 0.1);
+            --accent-reviewer: #34d399;
+            --accent-reviewer-bg: rgba(52, 211, 153, 0.1);
+            --accent-fix: #fbbf24;
+            --accent-fix-bg: rgba(251, 191, 36, 0.1);
+            --accent-success: #34d399;
+            --accent-error: #f87171;
+            --accent-pending: #55556a;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+            --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ── Background Effect ─────────────────────────── */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 30% 20%, rgba(167, 139, 250, 0.04) 0%, transparent 50%),
+                        radial-gradient(circle at 70% 80%, rgba(96, 165, 250, 0.03) 0%, transparent 50%),
+                        radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.02) 0%, transparent 50%);
+            z-index: 0;
+            animation: bgShift 20s ease-in-out infinite;
+        }
+
+        @keyframes bgShift {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(-2%, -1%); }
+        }
+
+        /* ── Header ────────────────────────────────────── */
+        .header {
+            position: relative;
+            z-index: 1;
+            padding: 24px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(12px);
+            background: rgba(10, 10, 15, 0.8);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--accent-architect), var(--accent-coder));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        .header h1 span {
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-badge.idle {
+            background: rgba(85, 85, 106, 0.2);
+            color: var(--text-secondary);
+            border: 1px solid rgba(85, 85, 106, 0.3);
+        }
+
+        .status-badge.running {
+            background: rgba(96, 165, 250, 0.15);
+            color: var(--accent-coder);
+            border: 1px solid rgba(96, 165, 250, 0.3);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .status-badge.running .status-dot {
+            animation: dotPulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        @keyframes dotPulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 0.6; }
+        }
+
+        .version-tag {
+            font-size: 11px;
+            color: var(--text-muted);
+            padding: 4px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ── Main Layout ───────────────────────────────── */
+        .main {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: 280px 1fr 300px;
+            grid-template-rows: auto 1fr;
+            gap: 1px;
+            background: var(--border);
+            min-height: calc(100vh - 73px);
+        }
+
+        .panel {
+            background: var(--bg-secondary);
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .panel-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-secondary);
+        }
+
+        .panel-count {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ── Task Cards ────────────────────────────────── */
+        .task-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .task-card {
+            padding: 14px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: var(--bg-glass);
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .task-card:hover {
+            border-color: var(--border-glow);
+            background: rgba(255, 255, 255, 0.04);
+            transform: translateY(-1px);
+        }
+
+        .task-card.active {
+            border-color: var(--accent-coder);
+            background: var(--accent-coder-bg);
+        }
+
+        .task-id {
+            font-size: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .task-desc {
+            font-size: 13px;
+            font-weight: 500;
+            line-height: 1.4;
+            margin-bottom: 10px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .task-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .task-status {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .task-status.open { background: rgba(251, 191, 36, 0.15); color: var(--accent-fix); }
+        .task-status.in_progress { background: var(--accent-coder-bg); color: var(--accent-coder); }
+        .task-status.closed { background: var(--accent-reviewer-bg); color: var(--accent-reviewer); }
+
+        .task-phase {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .task-files {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+
+        /* ── Pipeline & Execution Log ──────────────────── */
+        .center-panel {
+            grid-column: 2;
+            grid-row: 1 / -1;
+        }
+
+        .pipeline-phases {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 20px;
+        }
+
+        .phase-block {
+            flex: 1;
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: var(--bg-glass);
+            text-align: center;
+            transition: all var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .phase-block::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: transparent;
+            transition: background var(--transition);
+        }
+
+        .phase-block.active::after { height: 3px; }
+        .phase-block.done::after { height: 3px; }
+
+        .phase-block.architect { --phase-color: var(--accent-architect); }
+        .phase-block.coder { --phase-color: var(--accent-coder); }
+        .phase-block.reviewer { --phase-color: var(--accent-reviewer); }
+        .phase-block.fix { --phase-color: var(--accent-fix); }
+
+        .phase-block.active {
+            border-color: var(--phase-color);
+            background: color-mix(in srgb, var(--phase-color) 8%, transparent);
+        }
+
+        .phase-block.active::after { background: var(--phase-color); }
+
+        .phase-block.done {
+            border-color: rgba(52, 211, 153, 0.3);
+        }
+
+        .phase-block.done::after { background: var(--accent-success); }
+
+        .phase-name {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .phase-block.active .phase-name { color: var(--phase-color); }
+        .phase-block.done .phase-name { color: var(--accent-success); }
+
+        .phase-status {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .phase-arrow {
+            display: flex;
+            align-items: center;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* ── Execution Log ─────────────────────────────── */
+        .exec-log {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .log-entry {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            background: var(--bg-glass);
+            border: 1px solid var(--border);
+            font-size: 12px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .log-mode {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+            min-width: 72px;
+            text-align: center;
+        }
+
+        .log-mode.architect { background: var(--accent-architect-bg); color: var(--accent-architect); }
+        .log-mode.coder { background: var(--accent-coder-bg); color: var(--accent-coder); }
+        .log-mode.reviewer { background: var(--accent-reviewer-bg); color: var(--accent-reviewer); }
+        .log-mode.fix { background: var(--accent-fix-bg); color: var(--accent-fix); }
+
+        .log-content {
+            flex: 1;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+        }
+
+        .log-time {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            white-space: nowrap;
+        }
+
+        .log-status {
+            font-size: 14px;
+        }
+
+        /* ── Right Panel: Workspace + Telemetry ────────── */
+        .right-panel {
+            grid-column: 3;
+            grid-row: 1 / -1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .workspace-section, .telemetry-section {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .telemetry-section {
+            flex: 1;
+            border-bottom: none;
+        }
+
+        .file-tree {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-secondary);
+            transition: background var(--transition);
+            cursor: pointer;
+        }
+
+        .file-item:hover {
+            background: var(--bg-glass);
+        }
+
+        .file-icon { font-size: 14px; }
+        .file-name { flex: 1; }
+
+        .file-size {
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        /* ── Telemetry Stats ───────────────────────────── */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .stat-card {
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: var(--bg-glass);
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 2px;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .mode-breakdown {
+            margin-top: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .mode-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+        }
+
+        .mode-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .mode-dot.architect { background: var(--accent-architect); }
+        .mode-dot.coder { background: var(--accent-coder); }
+        .mode-dot.reviewer { background: var(--accent-reviewer); }
+        .mode-dot.fix { background: var(--accent-fix); }
+
+        .mode-label {
+            flex: 1;
+            color: var(--text-secondary);
+        }
+
+        .mode-count {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-muted);
+        }
+
+        /* ── Empty State ───────────────────────────────── */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .empty-state .icon { font-size: 32px; margin-bottom: 12px; opacity: 0.5; }
+        .empty-state .message { font-size: 13px; line-height: 1.5; }
+
+        /* ── File Preview Modal ────────────────────────── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.open { display: flex; }
+
+        .modal {
+            width: 700px;
+            max-height: 80vh;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-title {
+            font-size: 13px;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 500;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px;
+            transition: color var(--transition);
+        }
+
+        .modal-close:hover { color: var(--text-primary); }
+
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            max-height: calc(80vh - 52px);
+        }
+
+        .modal-body pre {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* ── Scrollbar ─────────────────────────────────── */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover { background: var(--border-glow); }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <div class="logo">A</div>
+            <h1>Agentic Coding Agent <span>— Live Dashboard</span></h1>
+        </div>
+        <div class="header-right">
+            <div class="status-badge idle" id="statusBadge">
+                <div class="status-dot"></div>
+                <span id="statusText">IDLE</span>
+            </div>
+            <div class="version-tag">v2.0 • OpenCode + Qwen 3</div>
+        </div>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="main">
+
+        <!-- Left: Task List -->
+        <div class="panel" id="taskPanel">
+            <div class="panel-header">
+                <span class="panel-title">Tasks</span>
+                <span class="panel-count" id="taskCount">0</span>
+            </div>
+            <div class="task-list" id="taskList">
+                <div class="empty-state">
+                    <div class="icon">📋</div>
+                    <div class="message">No tasks yet.<br>POST /tasks to create one.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center: Pipeline & Log -->
+        <div class="panel center-panel">
+            <div class="panel-header">
+                <span class="panel-title">Execution Pipeline</span>
+                <span class="panel-count" id="phaseLabel">—</span>
+            </div>
+
+            <!-- Pipeline phases -->
+            <div class="pipeline-phases" id="pipelinePhases">
+                <div class="phase-block architect" id="phaseArchitect">
+                    <div class="phase-name">Architect</div>
+                    <div class="phase-status">—</div>
+                </div>
+                <div class="phase-arrow">→</div>
+                <div class="phase-block coder" id="phaseCoder">
+                    <div class="phase-name">Coder</div>
+                    <div class="phase-status">—</div>
+                </div>
+                <div class="phase-arrow">→</div>
+                <div class="phase-block reviewer" id="phaseReviewer">
+                    <div class="phase-name">Reviewer</div>
+                    <div class="phase-status">—</div>
+                </div>
+                <div class="phase-arrow">→</div>
+                <div class="phase-block fix" id="phaseFix">
+                    <div class="phase-name">Fix</div>
+                    <div class="phase-status">—</div>
+                </div>
+            </div>
+
+            <!-- Execution log -->
+            <div class="panel-header" style="margin-top: 8px;">
+                <span class="panel-title">Execution Log</span>
+                <span class="panel-count" id="logCount">0 events</span>
+            </div>
+            <div class="exec-log" id="execLog">
+                <div class="empty-state">
+                    <div class="icon">⚡</div>
+                    <div class="message">Waiting for agent to start.<br>POST /agent/run to begin.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Workspace + Telemetry -->
+        <div class="panel right-panel">
+            <div class="workspace-section">
+                <div class="panel-header">
+                    <span class="panel-title">Workspace</span>
+                    <span class="panel-count" id="fileCount">0 files</span>
+                </div>
+                <div class="file-tree" id="fileTree">
+                    <div class="empty-state" style="padding: 20px;">
+                        <div class="icon">📁</div>
+                        <div class="message">Empty workspace</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="telemetry-section">
+                <div class="panel-header">
+                    <span class="panel-title">Telemetry</span>
+                </div>
+                <div class="stat-grid" id="statGrid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="statRuns">0</div>
+                        <div class="stat-label">OpenCode Runs</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statTools">0</div>
+                        <div class="stat-label">Tool Calls</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statLatency">0s</div>
+                        <div class="stat-label">Avg Latency</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statFiles">0</div>
+                        <div class="stat-label">Files Created</div>
+                    </div>
+                </div>
+                <div class="mode-breakdown" id="modeBreakdown"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- File Preview Modal -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title" id="modalTitle">file.py</span>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <pre id="modalCode"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = window.location.origin;
+        let pollInterval = null;
+        let lastTraceCount = 0;
+
+        // ── Fetch Helpers ──────────────────────────────────
+        async function fetchJSON(path) {
+            try {
+                const res = await fetch(`${API}${path}`);
+                return res.ok ? await res.json() : null;
+            } catch { return null; }
+        }
+
+        async function fetchText(path) {
+            try {
+                const res = await fetch(`${API}${path}`);
+                return res.ok ? await res.text() : null;
+            } catch { return null; }
+        }
+
+        // ── Update Functions ───────────────────────────────
+        async function updateAll() {
+            await Promise.all([
+                updateStatus(),
+                updateTasks(),
+                updateWorkspace(),
+                updateTelemetry(),
+                updateTraces(),
+            ]);
+        }
+
+        async function updateStatus() {
+            const data = await fetchJSON('/agent/status');
+            if (!data) return;
+
+            const badge = document.getElementById('statusBadge');
+            const text = document.getElementById('statusText');
+            const phaseLabel = document.getElementById('phaseLabel');
+
+            if (data.is_running) {
+                badge.className = 'status-badge running';
+                text.textContent = 'RUNNING';
+                phaseLabel.textContent = data.current_phase ? data.current_phase.toUpperCase() : '...';
+                updatePipelinePhase(data.current_phase);
+            } else {
+                badge.className = 'status-badge idle';
+                text.textContent = 'IDLE';
+                phaseLabel.textContent = '—';
+            }
+        }
+
+        function updatePipelinePhase(currentPhase) {
+            const phases = ['architect', 'coder', 'reviewer', 'fix'];
+            const phaseOrder = { architect: 0, coder: 1, reviewer: 2, fix: 3 };
+            const currentIdx = phaseOrder[currentPhase] ?? -1;
+
+            phases.forEach((phase, idx) => {
+                const el = document.getElementById('phase' + phase.charAt(0).toUpperCase() + phase.slice(1));
+                const statusEl = el.querySelector('.phase-status');
+
+                el.classList.remove('active', 'done');
+                if (idx < currentIdx) {
+                    el.classList.add('done');
+                    statusEl.textContent = '✓ done';
+                } else if (idx === currentIdx) {
+                    el.classList.add('active');
+                    statusEl.textContent = '● running';
+                } else {
+                    statusEl.textContent = '—';
+                }
+            });
+        }
+
+        async function updateTasks() {
+            const data = await fetchJSON('/tasks');
+            if (!data) return;
+
+            const list = document.getElementById('taskList');
+            const count = document.getElementById('taskCount');
+            count.textContent = data.tasks.length;
+
+            if (data.tasks.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">📋</div>
+                        <div class="message">No tasks yet.<br>POST /tasks to create one.</div>
+                    </div>`;
+                return;
+            }
+
+            list.innerHTML = data.tasks.map(task => {
+                const statusClass = task.status.toLowerCase().replace(' ', '_');
+                const fileCount = task.files_created ? task.files_created.length : 0;
+                return `
+                    <div class="task-card ${task.status === 'IN_PROGRESS' ? 'active' : ''}">
+                        <div class="task-id">${task.id}</div>
+                        <div class="task-desc">${escapeHtml(task.description)}</div>
+                        <div class="task-meta">
+                            <span class="task-status ${statusClass}">${task.status}</span>
+                            <span class="task-phase">${task.phase || ''}</span>
+                            <span class="task-files">${fileCount > 0 ? fileCount + ' files' : ''}</span>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
+        async function updateWorkspace() {
+            const data = await fetchJSON('/workspace');
+            if (!data) return;
+
+            const tree = document.getElementById('fileTree');
+            const count = document.getElementById('fileCount');
+            const files = Object.entries(data.files || {});
+            count.textContent = `${files.length} files`;
+
+            if (files.length === 0) {
+                tree.innerHTML = `
+                    <div class="empty-state" style="padding: 20px;">
+                        <div class="icon">📁</div>
+                        <div class="message">Empty workspace</div>
+                    </div>`;
+                return;
+            }
+
+            tree.innerHTML = files.map(([path, info]) => {
+                const ext = path.split('.').pop();
+                const icon = ext === 'py' ? '🐍' : ext === 'js' ? '📜' : ext === 'md' ? '📝' : '📄';
+                const size = info.size_bytes < 1024
+                    ? `${info.size_bytes}B`
+                    : `${(info.size_bytes / 1024).toFixed(1)}K`;
+                return `
+                    <div class="file-item" onclick="previewFile('${escapeHtml(path)}')">
+                        <span class="file-icon">${icon}</span>
+                        <span class="file-name">${escapeHtml(path)}</span>
+                        <span class="file-size">${size}</span>
+                    </div>`;
+            }).join('');
+        }
+
+        async function updateTelemetry() {
+            const data = await fetchJSON('/traces/summary');
+            if (!data) return;
+
+            document.getElementById('statRuns').textContent = data.total_runs || 0;
+            document.getElementById('statTools').textContent = data.total_tool_calls || 0;
+            document.getElementById('statFiles').textContent = data.total_files_modified || 0;
+
+            const avgLatency = data.avg_latency_ms || 0;
+            document.getElementById('statLatency').textContent =
+                avgLatency > 1000 ? `${(avgLatency / 1000).toFixed(1)}s` : `${avgLatency}ms`;
+
+            const breakdown = document.getElementById('modeBreakdown');
+            const modes = data.calls_by_mode || {};
+            const latencies = data.latency_by_mode || {};
+
+            if (Object.keys(modes).length === 0) {
+                breakdown.innerHTML = '';
+                return;
+            }
+
+            breakdown.innerHTML = Object.entries(modes).map(([mode, count]) => {
+                const lat = latencies[mode] || 0;
+                const latStr = lat > 1000 ? `${(lat / 1000).toFixed(1)}s` : `${lat}ms`;
+                return `
+                    <div class="mode-row">
+                        <div class="mode-dot ${mode}"></div>
+                        <span class="mode-label">${mode}</span>
+                        <span class="mode-count">${count}x • ${latStr}</span>
+                    </div>`;
+            }).join('');
+        }
+
+        async function updateTraces() {
+            const data = await fetchJSON('/traces');
+            if (!data || !data.traces) return;
+
+            const traces = data.traces;
+            if (traces.length === lastTraceCount) return;
+            lastTraceCount = traces.length;
+
+            const log = document.getElementById('execLog');
+            const logCount = document.getElementById('logCount');
+            logCount.textContent = `${traces.length} events`;
+
+            log.innerHTML = traces.slice().reverse().map(trace => {
+                const statusIcon = trace.success ? '✓' : '✗';
+                const latency = trace.latency_ms > 1000
+                    ? `${(trace.latency_ms / 1000).toFixed(1)}s`
+                    : `${trace.latency_ms}ms`;
+
+                let content = '';
+                if (trace.files_modified && trace.files_modified.length > 0) {
+                    content = trace.files_modified.map(f => `📄 ${f}`).join(', ');
+                } else if (trace.error) {
+                    content = `Error: ${trace.error.substring(0, 80)}`;
+                } else if (trace.text_output) {
+                    content = trace.text_output.substring(0, 100) + (trace.text_output.length > 100 ? '...' : '');
+                } else {
+                    content = `${trace.tool_calls ? trace.tool_calls.length : 0} tool calls`;
+                }
+
+                return `
+                    <div class="log-entry">
+                        <span class="log-mode ${trace.mode}">${trace.mode}</span>
+                        <span class="log-content">${escapeHtml(content)}</span>
+                        <span class="log-time">${latency}</span>
+                        <span class="log-status">${statusIcon}</span>
+                    </div>`;
+            }).join('');
+        }
+
+        // ── File Preview ───────────────────────────────────
+        async function previewFile(path) {
+            const content = await fetchText(`/workspace/${path}`);
+            if (content === null) return;
+
+            document.getElementById('modalTitle').textContent = path;
+            document.getElementById('modalCode').textContent = content;
+            document.getElementById('modalOverlay').classList.add('open');
+        }
+
+        document.getElementById('modalClose').addEventListener('click', () => {
+            document.getElementById('modalOverlay').classList.remove('open');
+        });
+
+        document.getElementById('modalOverlay').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) {
+                e.currentTarget.classList.remove('open');
+            }
+        });
+
+        // ── Utilities ──────────────────────────────────────
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ── Polling ────────────────────────────────────────
+        function startPolling() {
+            updateAll();
+            pollInterval = setInterval(updateAll, 2000);
+        }
+
+        // ── Init ───────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', startPolling);
+    </script>
+</body>
+</html>

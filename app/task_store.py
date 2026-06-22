@@ -1,5 +1,5 @@
-from typing import Optional
-from .models import Task, TaskStatus
+from typing import Optional, List
+from .models import Task, TaskStatus, TaskPhase
 from datetime import datetime
 
 
@@ -34,10 +34,28 @@ class TaskStore:
         task.status = TaskStatus.CLOSED
         task.closed_at = datetime.utcnow()
 
-    def record_iteration(self, task_id: str, llm_output: str) -> None:
+    def set_phase(self, task_id: str, phase: TaskPhase) -> None:
+        task = self._tasks[task_id]
+        task.phase = phase
+
+    def set_plan(self, task_id: str, plan: str) -> None:
+        task = self._tasks[task_id]
+        task.plan = plan
+
+    def set_review(self, task_id: str, verdict: str, details: str) -> None:
+        task = self._tasks[task_id]
+        task.review_verdict = verdict
+        task.review_details = details
+
+    def add_file(self, task_id: str, filepath: str) -> None:
+        task = self._tasks[task_id]
+        if filepath not in task.files_created:
+            task.files_created.append(filepath)
+
+    def record_phase_output(self, task_id: str, phase: str, output: dict) -> None:
         task = self._tasks[task_id]
         task.iterations += 1
-        task.llm_outputs.append(llm_output)
+        task.phase_outputs.append({"phase": phase, **output})
 
     def summary(self) -> dict:
         tasks = self.list_all()
