@@ -126,19 +126,70 @@ curl http://localhost:8000/traces
 
 ```
 Multiagent/
-├── app/
-│   ├── agent.py          # Main pipeline logic (ARCHITECT/CODER/REVIEWER/FIX)
-│   ├── main.py           # FastAPI endpoints
-│   ├── models.py         # Pydantic models (Task, Trace)
-│   ├── opencode_runner.py # OpenCode CLI wrapper
-│   ├── task_store.py     # In-memory task storage
-│   ├── telemetry.py      # Telemetry tracking
-│   └── harness/          # Prompt templates for each phase
-│       ├── architect.md
-│       ├── coder.md
-│       └── reviewer.md
-├── workspace/            # Generated code output
-├── output/               # Timestamped run results
-├── static/               # Dashboard HTML
-└── opencode.json         # OpenCode provider config
+├── agent-ts/                  # TypeScript service (OpenCode SDK)
+│   ├── src/
+│   │   ├── index.ts           # Express API (port 3000)
+│   │   ├── pipeline.ts        # ARCHITECT → CODER → REVIEWER → FIXER loop
+│   │   ├── runner.ts          # OpenCode SDK session wrapper
+│   │   ├── store.ts           # In-memory task + trace store
+│   │   └── types.ts           # TypeScript types
+│   ├── package.json
+│   └── tsconfig.json
+├── .opencode/
+│   └── agents/                # OpenCode native agent definitions
+│       ├── architect.md       # Primary agent — system design
+│       ├── coder.md           # Primary agent — implementation
+│       ├── reviewer.md        # Subagent — code review
+│       └── ask.md             # Subagent — codebase Q&A
+├── harness/                   # Prompt source files (mirrored in .opencode/agents/)
+├── app/                       # Python FastAPI service (v2, kept for reference)
+├── workspace/                 # Generated code output
+├── output/                    # Timestamped run results
+├── static/                    # Dashboard HTML
+└── opencode.json              # OpenCode provider config (ollama/qwen3:8b)
 ```
+
+## agent-ts (TypeScript — recommended)
+
+### Start
+
+```bash
+cd agent-ts
+npm install
+npm start          # http://localhost:3000
+```
+
+### Usage
+
+```bash
+# Create a task
+curl -X POST http://localhost:3000/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"description": "Build a CLI todo app in Python"}'
+
+# Run the full pipeline (architect → coder → reviewer → fixer)
+curl -X POST http://localhost:3000/tasks/{id}/run
+
+# Or run a single agent
+curl -X POST http://localhost:3000/tasks/{id}/run/architect
+curl -X POST http://localhost:3000/tasks/{id}/run/coder
+curl -X POST http://localhost:3000/tasks/{id}/run/reviewer
+curl -X POST http://localhost:3000/tasks/{id}/run/fixer
+
+# Check task status + phase results
+curl http://localhost:3000/tasks/{id}
+
+# View OpenCode event traces
+curl http://localhost:3000/traces
+```
+
+### How Agent Injection Works
+
+Each phase creates a fresh OpenCode session via the SDK:
+
+1. `session.create()` — new isolated context
+2. `session.prompt({ noReply: true })` — injects the agent persona (from `harness/{agent}.md`) **without** triggering the model
+3. `session.prompt({ model: ollama/qwen3:8b })` — sends the actual task; LLM sees persona + task
+4. `event.subscribe()` — background stream captures all OpenCode events for `/traces`
+
+The harness files in `.opencode/agents/` are also picked up natively by the OpenCode TUI — `architect` and `coder` appear as Tab-selectable primary agents, while `reviewer` and `ask` are `@mention`-able subagents.

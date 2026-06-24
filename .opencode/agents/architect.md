@@ -1,6 +1,7 @@
 ---
 description: Principal software architect focused on scalable and maintainable system design
 mode: primary
+model: ollama/qwen3:8b
 temperature: 0.1
 ---
 

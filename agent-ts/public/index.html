@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Chat</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+    .sidebar {
+      width: 260px;
+      background: #161b22;
+      border-right: 1px solid #30363d;
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+    }
+    .sidebar h2 {
+      font-size: 14px;
+      color: #8b949e;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .agent-select {
+      width: 100%;
+      padding: 10px 12px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-size: 14px;
+      margin-bottom: 20px;
+      cursor: pointer;
+    }
+    .agent-select:focus {
+      outline: none;
+      border-color: #58a6ff;
+    }
+    .agent-group {
+      margin-bottom: 16px;
+    }
+    .agent-group h3 {
+      font-size: 12px;
+      color: #8b949e;
+      margin-bottom: 8px;
+      padding-left: 4px;
+    }
+    .agent-btn {
+      width: 100%;
+      padding: 8px 12px;
+      margin-bottom: 4px;
+      background: transparent;
+      border: none;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-size: 13px;
+      text-align: left;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .agent-btn:hover {
+      background: #21262d;
+    }
+    .agent-btn.active {
+      background: #1f6feb;
+      color: #fff;
+    }
+    .agent-btn .badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      background: #30363d;
+      color: #8b949e;
+    }
+    .agent-btn.active .badge {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+    }
+    .session-info {
+      margin-top: auto;
+      padding-top: 16px;
+      border-top: 1px solid #30363d;
+    }
+    .session-info h3 {
+      font-size: 12px;
+      color: #8b949e;
+      margin-bottom: 8px;
+    }
+    .session-id {
+      font-family: monospace;
+      font-size: 11px;
+      color: #58a6ff;
+      word-break: break-all;
+      padding: 6px;
+      background: #21262d;
+      border-radius: 4px;
+    }
+    .new-session-btn {
+      width: 100%;
+      padding: 8px;
+      margin-top: 8px;
+      background: #238636;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .new-session-btn:hover {
+      background: #2ea043;
+    }
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header h1 {
+      font-size: 16px;
+      font-weight: 500;
+    }
+    .header .status {
+      font-size: 12px;
+      color: #8b949e;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #238636;
+    }
+    .status-dot.busy {
+      background: #f0883e;
+    }
+    .chat-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .message {
+      max-width: 90%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+    .message.user {
+      align-self: flex-end;
+      background: #1f6feb;
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .message.assistant {
+      align-self: flex-start;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-bottom-left-radius: 4px;
+    }
+    .message-meta {
+      font-size: 11px;
+      color: #8b949e;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .message.user .message-meta {
+      color: rgba(255,255,255,0.7);
+    }
+    .input-area {
+      padding: 16px 24px;
+      border-top: 1px solid #30363d;
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+    .input-box {
+      flex: 1;
+      padding: 12px 16px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      color: #c9d1d9;
+      font-size: 14px;
+      resize: none;
+      min-height: 44px;
+      max-height: 200px;
+      font-family: inherit;
+      line-height: 1.5;
+    }
+    .input-box:focus {
+      outline: none;
+      border-color: #58a6ff;
+    }
+    .send-btn {
+      padding: 12px 20px;
+      background: #1f6feb;
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      height: 44px;
+    }
+    .send-btn:hover {
+      background: #388bfd;
+    }
+    .send-btn:disabled {
+      background: #21262d;
+      color: #484f58;
+      cursor: not-allowed;
+    }
+    .empty-state {
+      text-align: center;
+      color: #8b949e;
+      padding: 40px;
+    }
+    .empty-state h3 {
+      font-size: 16px;
+      margin-bottom: 8px;
+      color: #c9d1d9;
+    }
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #30363d;
+      border-top-color: #58a6ff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .error {
+      color: #f85149;
+      font-size: 13px;
+      padding: 8px 12px;
+      background: rgba(248,81,73,0.1);
+      border-radius: 6px;
+      margin-top: 8px;
+    }
+    .token-info {
+      font-size: 11px;
+      color: #8b949e;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #30363d;
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h2>Agent</h2>
+    <div id="agentList">
+      <div class="agent-group">
+        <h3>Loading...</h3>
+      </div>
+    </div>
+
+    <div class="session-info">
+      <h3>Session</h3>
+      <div id="sessionId" class="session-id">No active session</div>
+      <button class="new-session-btn" onclick="newSession()">New Session</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="header">
+      <h1 id="currentAgent">Select an agent</h1>
+      <div class="status">
+        <div id="statusDot" class="status-dot"></div>
+        <span id="statusText">Ready</span>
+      </div>
+    </div>
+
+    <div id="chatArea" class="chat-area">
+      <div class="empty-state">
+        <h3>Welcome to Agent Chat</h3>
+        <p>Select an agent from the sidebar and start typing.</p>
+      </div>
+    </div>
+
+    <div class="input-area">
+      <textarea
+        id="inputBox"
+        class="input-box"
+        placeholder="Type your message..."
+        rows="1"
+        onkeydown="handleKeydown(event)"
+      ></textarea>
+      <button id="sendBtn" class="send-btn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+  <script>
+    const API = window.location.origin;
+    let currentAgent = '';
+    let sessionId = '';
+    let isBusy = false;
+
+    // Auto-resize textarea
+    const inputBox = document.getElementById('inputBox');
+    inputBox.addEventListener('input', () => {
+      inputBox.style.height = 'auto';
+      inputBox.style.height = Math.min(inputBox.scrollHeight, 200) + 'px';
+    });
+
+    async function loadAgents() {
+      try {
+        const res = await fetch(`${API}/agents`);
+        const agents = await res.json();
+        renderAgents(agents);
+      } catch (err) {
+        console.error('Failed to load agents:', err);
+      }
+    }
+
+    function renderAgents(agents) {
+      const container = document.getElementById('agentList');
+      const primaries = agents.filter(a => a.mode === 'primary');
+      const subagents = agents.filter(a => a.mode === 'subagent');
+      const others = agents.filter(a => a.mode !== 'primary' && a.mode !== 'subagent');
+
+      let html = '';
+
+      if (primaries.length) {
+        html += '<div class="agent-group"><h3>Primary</h3>';
+        primaries.forEach(a => {
+          html += `<button class="agent-btn" data-agent="${a.name}" onclick="selectAgent('${a.name}')">
+            ${a.name}
+            <span class="badge">primary</span>
+          </button>`;
+        });
+        html += '</div>';
+      }
+
+      if (subagents.length) {
+        html += '<div class="agent-group"><h3>Subagents</h3>';
+        subagents.forEach(a => {
+          html += `<button class="agent-btn" data-agent="${a.name}" onclick="selectAgent('${a.name}')">
+            ${a.name}
+            <span class="badge">sub</span>
+          </button>`;
+        });
+        html += '</div>';
+      }
+
+      if (others.length) {
+        html += '<div class="agent-group"><h3>Other</h3>';
+        others.forEach(a => {
+          html += `<button class="agent-btn" data-agent="${a.name}" onclick="selectAgent('${a.name}')">
+            ${a.name}
+            <span class="badge">${a.mode || 'all'}</span>
+          </button>`;
+        });
+        html += '</div>';
+      }
+
+      container.innerHTML = html;
+
+      // Auto-select first primary
+      if (primaries.length && !currentAgent) {
+        selectAgent(primaries[0].name);
+      }
+    }
+
+    function selectAgent(name) {
+      currentAgent = name;
+      document.getElementById('currentAgent').textContent = name;
+      document.querySelectorAll('.agent-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.agent === name);
+      });
+    }
+
+    function newSession() {
+      sessionId = '';
+      document.getElementById('sessionId').textContent = 'No active session';
+    }
+
+    function setBusy(busy) {
+      isBusy = busy;
+      document.getElementById('sendBtn').disabled = busy;
+      document.getElementById('statusDot').classList.toggle('busy', busy);
+      document.getElementById('statusText').textContent = busy ? 'Thinking...' : 'Ready';
+    }
+
+    function addMessage(role, text, meta = '') {
+      const chatArea = document.getElementById('chatArea');
+
+      // Remove empty state
+      if (chatArea.querySelector('.empty-state')) {
+        chatArea.innerHTML = '';
+      }
+
+      const msg = document.createElement('div');
+      msg.className = `message ${role}`;
+
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'message-meta';
+      metaDiv.textContent = role === 'user' ? 'You' : `${currentAgent} ${meta}`;
+
+      const textDiv = document.createElement('div');
+      textDiv.textContent = text;
+
+      msg.appendChild(metaDiv);
+      msg.appendChild(textDiv);
+      chatArea.appendChild(msg);
+      chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    function addError(text) {
+      const chatArea = document.getElementById('chatArea');
+      const div = document.createElement('div');
+      div.className = 'error';
+      div.textContent = text;
+      chatArea.appendChild(div);
+      chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const text = inputBox.value.trim();
+      if (!text || !currentAgent || isBusy) return;
+
+      inputBox.value = '';
+      inputBox.style.height = 'auto';
+      addMessage('user', text);
+      setBusy(true);
+
+      try {
+        const res = await fetch(`${API}/run`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agent: currentAgent,
+            prompt: text,
+            sessionId: sessionId || undefined
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.error) {
+          addError(data.error);
+        } else {
+          sessionId = data.sessionId || sessionId;
+          document.getElementById('sessionId').textContent = sessionId || 'No active session';
+
+          let meta = '';
+          if (data.tokens) {
+            meta = `(${data.tokens.input + data.tokens.output} tokens, ${data.latencyMs}ms)`;
+          }
+          addMessage('assistant', data.text || '(no output)', meta);
+        }
+      } catch (err) {
+        addError('Network error: ' + err.message);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function handleKeydown(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    }
+
+    // Initialize
+    loadAgents();
+  </script>
+</body>
+</html>
