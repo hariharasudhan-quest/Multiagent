@@ -9,6 +9,15 @@
       "models": {
         "qwen3:8b": {
           "name": "Qwen 3 8B (Local)"
+        },
+        "qwen3.5:9b": {
+          "name": "Qwen 3.5 9B (Local)"
+        },
+        "qwen3.5:9b-32k": {
+          "name": "Qwen 3.5 9B 32K (Local)"
+        },
+        "ornith:9b": {
+          "name": "Ornith 9B (Local)"
         }
       }
     }

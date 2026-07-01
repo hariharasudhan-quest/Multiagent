@@ -1,8 +1,19 @@
 import express, { Request, Response } from "express"
 import { fileURLToPath } from "url"
 import { dirname, join } from "path"
+import { randomUUID } from "crypto"
 import { store } from "./store"
 import { runAgent, getClient } from "./runner"
+import type { RunResult } from "./runner"
+
+interface Job {
+  status: "pending" | "done" | "error"
+  result?: RunResult
+  error?: string
+  createdAt: number
+}
+
+const jobs = new Map<string, Job>()
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -10,9 +21,9 @@ const app = express()
 app.use(express.json())
 app.use(express.static(join(__dirname, "..", "public")))
 
-// ── Run (agent + prompt in one shot, optional session reuse) ──────────────────
+// ── Run (async job — returns jobId immediately) ───────────────────────────────
 
-app.post("/run", async (req: Request, res: Response) => {
+app.post("/run", (req: Request, res: Response) => {
   const { agent, prompt, sessionId } = req.body as {
     agent?: string
     prompt?: string
@@ -21,16 +32,38 @@ app.post("/run", async (req: Request, res: Response) => {
   if (!agent?.trim()) return res.status(400).json({ error: "agent is required" })
   if (!prompt?.trim()) return res.status(400).json({ error: "prompt is required" })
 
-  try {
-    const result = await runAgent(agent, prompt, sessionId)
+  const jobId = randomUUID().slice(0, 8)
+  jobs.set(jobId, { status: "pending", createdAt: Date.now() })
+
+  // Fire and forget — no await
+  runAgent(agent, prompt, sessionId).then((result) => {
     if (sessionId && result.success) {
       store.updateSessionAgent(sessionId, result.agentUsed)
     }
-    return res.json(result)
-  } catch (err: unknown) {
+    jobs.set(jobId, { status: "done", result, createdAt: Date.now() })
+  }).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err)
-    return res.status(500).json({ error: msg })
+    jobs.set(jobId, { status: "error", error: msg, createdAt: Date.now() })
+  })
+
+  return res.json({ jobId })
+})
+
+app.get("/run/:jobId", (req: Request, res: Response) => {
+  const job = jobs.get(req.params.jobId)
+  if (!job) return res.status(404).json({ error: "job not found" })
+
+  if (job.status === "pending") {
+    return res.json({ status: "pending" })
   }
+
+  if (job.status === "error") {
+    jobs.delete(req.params.jobId)
+    return res.json({ status: "error", error: job.error })
+  }
+
+  jobs.delete(req.params.jobId)
+  return res.json({ status: "done", ...job.result })
 })
 
 // ── Sessions ──────────────────────────────────────────────────────────────────

@@ -452,7 +452,8 @@
       setBusy(true);
 
       try {
-        const res = await fetch(`${API}/run`, {
+        // Step 1: submit job, get jobId immediately
+        const submitRes = await fetch(`${API}/run`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -462,11 +463,34 @@
           })
         });
 
-        const data = await res.json();
+        const { jobId, error: submitError } = await submitRes.json();
 
-        if (data.error) {
-          addError(data.error);
-        } else {
+        if (submitError) {
+          addError(submitError);
+          setBusy(false);
+          return;
+        }
+
+        // Step 2: poll until done
+        let elapsed = 0;
+        while (true) {
+          await new Promise(r => setTimeout(r, 2000));
+          elapsed += 2;
+
+          document.getElementById('statusText').textContent =
+            `Thinking... (${elapsed}s)`;
+
+          const pollRes = await fetch(`${API}/run/${jobId}`);
+          const data = await pollRes.json();
+
+          if (data.status === 'pending') continue;
+
+          if (data.status === 'error') {
+            addError(data.error || 'Agent error');
+            break;
+          }
+
+          // done
           sessionId = data.sessionId || sessionId;
           document.getElementById('sessionId').textContent = sessionId || 'No active session';
 
@@ -475,6 +499,7 @@
             meta = `(${data.tokens.input + data.tokens.output} tokens, ${data.latencyMs}ms)`;
           }
           addMessage('assistant', data.text || '(no output)', meta);
+          break;
         }
       } catch (err) {
         addError('Network error: ' + err.message);
