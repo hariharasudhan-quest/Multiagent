@@ -1,0 +1,24 @@
+___
+___
+___
+Enter the cell to place: 
+X__
+___
+___
+Enter the cell to place: 
+X_O
+___
+___
+Enter the cell to place: 
+X_O
+_X_
+___
+Enter the cell to place: 
+X_O
+_XO
+___
+Enter the cell to place: 
+X_O
+_XO
+__X
+The winner is: X
