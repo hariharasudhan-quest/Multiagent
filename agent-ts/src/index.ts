@@ -1,8 +1,28 @@
+import { initializeOtel } from "./otel"
 import express, { Request, Response } from "express"
 import { fileURLToPath } from "url"
 import { dirname, join } from "path"
 import { store } from "./store"
 import { runAgent, getClient } from "./runner"
+import type { SpanContext } from "./span"
+
+// Initialize OpenTelemetry at the very top
+initializeOtel()
+
+// ── Trace Context Store (for linking runner and proxy spans) ───────────────
+const traceContextStore = new Map<string, SpanContext>()
+
+export function setTraceContext(sessionId: string, ctx: SpanContext): void {
+  traceContextStore.set(sessionId, ctx)
+}
+
+export function getTraceContext(sessionId: string): SpanContext | undefined {
+  return traceContextStore.get(sessionId)
+}
+
+export function clearTraceContext(sessionId: string): void {
+  traceContextStore.delete(sessionId)
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 

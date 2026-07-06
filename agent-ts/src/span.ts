@@ -1,44 +1,8 @@
 import { randomUUID } from "crypto"
 import { trace, Span as OTelSpan, SpanKind, Context } from "@opentelemetry/api"
 import { SpanStatusCode } from "@opentelemetry/api"
-
-export enum SpanStatus {
-  UNSET = 0,
-  OK = 1,
-  ERROR = 2,
-  CANCELLED = 3,
-}
-
-export interface SpanContext {
-  traceId: string
-  spanId: string
-  parentSpanId?: string
-}
-
-export interface SpanData {
-  spanId: string
-  traceId: string
-  parentSpanId?: string
-  name: string
-  startTime: number
-  endTime: number
-  durationMs: number
-  attributes: Record<string, string | number | boolean | string[]>
-  events: SpanEvent[]
-  status: { code: SpanStatus; message?: string }
-  taskId?: string
-  sessionId?: string
-}
-
-export interface SpanEvent {
-  name: string
-  timestamp: number
-  attributes?: Record<string, unknown>
-}
-
-export interface SpanExporter {
-  export(span: SpanData): void
-}
+import { SpanBuilder } from "./span/SpanBuilder"
+import type { SpanContext, SpanData, SpanExporter, SpanStatus, SpanEvent } from "./types"
 
 export const consoleExporter: SpanExporter = {
   export(span: SpanData) {
@@ -46,7 +10,6 @@ export const consoleExporter: SpanExporter = {
   },
 }
 
-// ── OpenTelemetry Span Exporter ─────────────────────────────────────────────
 export class OTelSpanExporter implements SpanExporter {
   export(spanData: SpanData): void {
     const tracer = trace.getTracer("agent-ts", "1.0.0")
@@ -62,20 +25,18 @@ export class OTelSpanExporter implements SpanExporter {
       },
     })
 
-    // Add events
     spanData.events.forEach((event) => {
       span.addEvent(event.name, event.attributes, event.timestamp)
     })
 
-    // Set status
-    if (spanData.status.code === SpanStatus.OK) {
+    if (spanData.status.code === (SpanStatus.OK as number)) {
       span.setStatus({ code: SpanStatusCode.OK })
-    } else if (spanData.status.code === SpanStatus.ERROR) {
+    } else if (spanData.status.code === (SpanStatus.ERROR as number)) {
       span.setStatus({
         code: SpanStatusCode.ERROR,
         description: spanData.status.message,
       })
-    } else if (spanData.status.code === SpanStatus.CANCELLED) {
+    } else if (spanData.status.code === (SpanStatus.CANCELLED as number)) {
       span.setStatus({ code: SpanStatusCode.ERROR, description: "Cancelled" })
     }
 
@@ -83,18 +44,47 @@ export class OTelSpanExporter implements SpanExporter {
   }
 }
 
-export class AgentSpan {
-  private spanId: string
-  private traceId: string
-  private parentSpanId?: string
-
+class SpanLifecycle {
   private startTime: number
   private endTime: number | null = null
   private ended = false
 
-  private attributes: Record<string, string | number | boolean | string[]> = {}
-  private events: SpanEvent[] = []
-  private status: { code: SpanStatus; message?: string } = { code: SpanStatus.UNSET }
+  constructor() {
+    this.startTime = Date.now()
+  }
+
+  end(): number {
+    if (this.ended) {
+      return this.endTime ?? this.startTime
+    }
+    this.ended = true
+    this.endTime = Date.now()
+    return this.endTime
+  }
+
+  getDuration(): number {
+    return (this.endTime ?? Date.now()) - this.startTime
+  }
+
+  getStartTime(): number {
+    return this.startTime
+  }
+
+  getEndTime(): number {
+    return this.endTime ?? Date.now()
+  }
+
+  isEnded(): boolean {
+    return this.ended
+  }
+}
+
+export class AgentSpan {
+  private spanId: string
+  private traceId: string
+  private parentSpanId?: string
+  private lifecycle: SpanLifecycle
+  private builder: SpanBuilder
 
   constructor(
     private spanName: string,
@@ -106,10 +96,10 @@ export class AgentSpan {
     this.spanId = ctx.spanId
     this.traceId = ctx.traceId
     this.parentSpanId = ctx.parentSpanId
-    this.startTime = Date.now()
+    this.lifecycle = new SpanLifecycle()
+    this.builder = new SpanBuilder()
   }
 
-  // Static helper for the common "new span in an existing trace" case
   static child(parent: SpanContext, name: string, taskId?: string, sessionId?: string, exporter?: SpanExporter): AgentSpan {
     return new AgentSpan(
       name,
@@ -120,7 +110,6 @@ export class AgentSpan {
     )
   }
 
-  // Static helper for a root span (starts a new trace)
   static root(name: string, taskId?: string, sessionId?: string, exporter?: SpanExporter): AgentSpan {
     return new AgentSpan(
       name,
@@ -136,77 +125,67 @@ export class AgentSpan {
   }
 
   setAgent(agentName: string, agentUsed?: string): void {
-    this.attributes["agent.name"] = agentName
-    if (agentUsed) this.attributes["agent.used"] = agentUsed
+    this.builder.setAgent(agentName, agentUsed)
   }
 
   setModel(modelId: string, providerId: string): void {
-    this.attributes["model.id"] = modelId
-    this.attributes["model.provider"] = providerId
+    this.builder.setModel(modelId, providerId)
   }
 
   setPhase(phaseName: string, phaseType?: string): void {
-    this.attributes["phase.name"] = phaseName
-    if (phaseType) this.attributes["phase.type"] = phaseType
+    this.builder.setPhase(phaseName, phaseType)
   }
 
-  // total computed internally — no caller-supplied total to drift
   recordTokenUsage(inputTokens: number, outputTokens: number): void {
-    this.attributes["token.input"] = inputTokens
-    this.attributes["token.output"] = outputTokens
-    this.attributes["token.total"] = inputTokens + outputTokens
+    this.builder.recordTokenUsage(inputTokens, outputTokens)
   }
 
   recordFilesModified(files: string[]): void {
-    this.attributes["files.modified.count"] = files.length
-    this.attributes["files.modified.list"] = files // string[], not comma-joined
+    this.builder.recordFilesModified(files)
   }
 
   recordOutputLength(length: number): void {
-    this.attributes["output.length"] = length
+    this.builder.recordOutputLength(length)
   }
 
-  // ── Streaming-specific (proxy-side) ────────────────────────────────────────
   recordTTFT(ms: number): void {
-    this.attributes["llm.ttft.ms"] = ms
+    this.builder.recordTTFT(ms)
   }
 
   recordStreamingDuration(ms: number): void {
-    this.attributes["llm.stream.duration.ms"] = ms
+    this.builder.recordStreamingDuration(ms)
   }
 
   recordTokensPerSecond(tps: number): void {
-    this.attributes["llm.tokens.per.second"] = tps
+    this.builder.recordTokensPerSecond(tps)
   }
 
   addEvent(name: string, attributes?: Record<string, unknown>): void {
-    if (this.ended) return
-    this.events.push({ name, timestamp: Date.now(), attributes })
+    if (this.lifecycle.isEnded()) return
+    this.builder.addEvent(name, attributes)
   }
 
   setStatus(code: SpanStatus, message?: string): void {
-    this.status = { code, message }
+    this.builder.setStatus(code, message)
   }
 
   markSuccess(): void {
-    this.status = { code: SpanStatus.OK }
+    this.builder.markSuccess()
   }
 
   markError(message: string): void {
-    this.status = { code: SpanStatus.ERROR, message }
+    this.builder.markError(message)
   }
 
   markCancelled(message?: string): void {
-    this.status = { code: SpanStatus.CANCELLED, message }
+    this.builder.markCancelled(message)
   }
 
   end(): SpanData {
-    if (this.ended) {
-      // Return the frozen snapshot without re-emitting
+    if (this.lifecycle.isEnded()) {
       return this.toData()
     }
-    this.ended = true
-    this.endTime = Date.now()
+    this.lifecycle.end()
     const data = this.toData()
     this.exporter.export(data)
     return data
@@ -218,19 +197,20 @@ export class AgentSpan {
       traceId: this.traceId,
       parentSpanId: this.parentSpanId,
       name: this.spanName,
-      startTime: this.startTime,
-      endTime: this.endTime ?? Date.now(),
-      durationMs: (this.endTime ?? Date.now()) - this.startTime,
-      attributes: this.attributes,
-      events: this.events,
-      status: this.status,
+      startTime: this.lifecycle.getStartTime(),
+      endTime: this.lifecycle.getEndTime(),
+      durationMs: this.lifecycle.getDuration(),
+      attributes: this.builder.getAttributes(),
+      events: this.builder.getEvents(),
+      status: this.builder.getStatus(),
       taskId: this.taskId,
       sessionId: this.sessionId,
     }
   }
 
-  // Synchronous inspection (does not end the span)
   getData(): SpanData {
     return this.toData()
   }
 }
+
+export type { SpanContext, SpanData, SpanExporter, SpanStatus, SpanEvent } from "./types"

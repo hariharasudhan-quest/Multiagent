@@ -1,0 +1,15 @@
+# Datadog Configuration
+DD_API_KEY=your_datadog_api_key_here
+DD_SITE=datadoghq.com
+DD_ENV=dev
+DD_SERVICE=agent-ts
+DD_TRACE_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+DD_METRIC_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+
+# OpenCode Configuration
+OPENCODE_URL=http://127.0.0.1:4096
+OPENCODE_MODEL_ID=qwen3:8b
+
+# Proxy Configuration
+PROXY_TARGET=http://localhost:11434
+PROXY_PORT=8080

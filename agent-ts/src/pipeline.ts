@@ -2,6 +2,8 @@ import { runAgent } from "./runner"
 import type { RunResult } from "./runner"
 import { store } from "./store"
 import type { PhaseResult } from "./types"
+import { AgentSpan, OTelSpanExporter } from "./span"
+import type { SpanContext } from "./types"
 
 function toPhaseResult(agent: string, r: RunResult): PhaseResult {
   return {
@@ -30,10 +32,22 @@ export async function runSingleAgent(
     ? `${task.description}\n\n${extraContext}`
     : task.description
 
+  // Create a pipeline span for this task execution
+  const pipelineSpan = AgentSpan.root(`pipeline.${taskId}`, taskId, undefined, new OTelSpanExporter())
+  pipelineSpan.setPhase(agentName, "single_agent")
+  pipelineSpan.addEvent("pipeline.started")
+
   store.setStatus(taskId, "running")
-  const result = await runAgent(agentName, prompt)
+  const result = await runAgent(agentName, prompt, undefined, pipelineSpan.getContext())
   store.recordPhase(taskId, agentName, toPhaseResult(agentName, result))
   store.setStatus(taskId, result.success ? "done" : "failed")
+
+  if (result.success) {
+    pipelineSpan.markSuccess()
+  } else {
+    pipelineSpan.markError(result.error || "Unknown error")
+  }
+  pipelineSpan.end()
 
   return result
 }

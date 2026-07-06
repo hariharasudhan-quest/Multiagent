@@ -2,6 +2,8 @@ import { createOpencodeClient } from "@opencode-ai/sdk"
 import type { Part } from "@opencode-ai/sdk"
 import { randomUUID } from "crypto"
 import { store } from "./store"
+import { AgentSpan, OTelSpanExporter } from "./span"
+import type { SpanContext } from "./types"
 
 const MODEL = {
   providerID: "ollama",
@@ -57,15 +59,32 @@ export async function runAgent(
   agentName: string,
   prompt: string,
   existingSessionId?: string,
+  parentContext?: { traceId: string; spanId: string },
 ): Promise<RunResult> {
   const client = await getClient()
   const start = Date.now()
   let sessionId: string
 
+  // Create span for this agent execution
+  const span = parentContext
+    ? AgentSpan.child(parentContext, `agent.${agentName}`, undefined, existingSessionId, new OTelSpanExporter())
+    : AgentSpan.root(`agent.${agentName}`, undefined, existingSessionId, new OTelSpanExporter())
+
+  span.setAgent(agentName)
+  span.setModel(MODEL.modelID, MODEL.providerID)
+  span.addEvent("agent.started")
+
+  // Store trace context for proxy to use
+  const ctx = span.getContext()
+  if (sessionId) {
+    setTraceContext(sessionId, ctx)
+  }
+
   try {
     if (existingSessionId) {
       sessionId = existingSessionId
       console.log(`[${agentName}] reusing session ${sessionId}`)
+      span.addEvent("session.reused", { sessionId })
     } else {
       console.log(`[${agentName}] creating session...`)
       const sessionResp = await client.session.create({
@@ -82,6 +101,7 @@ export async function runAgent(
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       })
+      span.addEvent("session.created", { sessionId })
     }
 
     // Add current user prompt to session history
@@ -98,6 +118,8 @@ export async function runAgent(
       : prompt
 
     console.log(`[${agentName}] sending prompt (history=${history.length} turns)...`)
+    span.addEvent("llm.request.sent", { historyTurns: history.length })
+
     const result = await client.session.prompt({
       path: { id: sessionId },
       body: {
@@ -105,6 +127,9 @@ export async function runAgent(
         model: MODEL,
         parts: [{ type: "text", text: promptWithContext }],
       },
+      // Note: OpenCode SDK may not support custom headers here
+      // The proxy will create its own spans based on the trace context
+      // We'll need to ensure the proxy can access the trace context
     })
 
     console.log(`[${agentName}] prompt completed in ${Date.now() - start}ms`)
@@ -114,23 +139,38 @@ export async function runAgent(
     const info = result.data?.info
     const responseText = extractText(parts)
 
+    span.addEvent("llm.response.received")
+
     // Store assistant response in session history
     store.addToSessionHistory(sessionId, "assistant", responseText)
+
+    // Record metrics
+    const inputTokens = info?.tokens?.input ?? 0
+    const outputTokens = info?.tokens?.output ?? 0
+    const filesModified = extractFiles(parts)
+
+    span.recordTokenUsage(inputTokens, outputTokens)
+    span.recordFilesModified(filesModified)
+    span.recordOutputLength(responseText.length)
+    span.markSuccess()
+    span.end()
 
     return {
       sessionId,
       agentUsed: agentName,
       text: responseText,
-      filesModified: extractFiles(parts),
+      filesModified,
       tokens: {
-        input: info?.tokens?.input ?? 0,
-        output: info?.tokens?.output ?? 0,
+        input: inputTokens,
+        output: outputTokens,
       },
       latencyMs: Date.now() - start,
       success: true,
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
+    span.markError(msg)
+    span.end()
     return {
       sessionId: existingSessionId ?? "",
       agentUsed: agentName,
