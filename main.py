@@ -84,19 +84,29 @@ player_index = 0
 player_count = len(players)
 
 print_board(board)
+
 while check_winner(board) is None and has_empty_cells(board):
-    user_input_str = input("Enter the cell to place: ")
+    import builtins
+    import sys
+    prompt = "Enter the cell to place: "
+    # Write prompt with newline for proper line termination when stdin is piped
+    print(prompt, end="\n")  # Add newline to move to next line
+    user_input_str = builtins.input()  # Reads from stdin after printing prompt
+    if user_input_str.strip() == "exit":
+        break
     try:
-        user_input_int = int(user_input_str) - 1
+        user_input_int = int(user_input_str.strip()) - 1
         r = user_input_int // BOARD_SIZE
         c = user_input_int % BOARD_SIZE
-        if board[r][c] != CELL_EMPTY:
+        if board[r][c] != CELL_EMPTY or r >= BOARD_SIZE:
             print("Invalid")
-            continue
-        board[r][c] = players[player_index]
-        player_index = (player_index + 1) % player_count
-        print()
-        print_board(board)
+        else:
+            board[r][c] = players[player_index]
+            player_index = (player_index + 1) % player_count
+            print_board(board)
+    except (ValueError, IndexError):
+        print("Invalid")
+        break
     except:
         print("Invalid")
 
