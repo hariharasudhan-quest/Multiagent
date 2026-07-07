@@ -4,11 +4,30 @@ import { SpanStatusCode } from "@opentelemetry/api"
 import { SpanBuilder } from "./span/SpanBuilder"
 import { SpanStatus } from "./types"
 import type { SpanContext, SpanData, SpanExporter, SpanEvent } from "./types"
+import { appendFileSync, mkdirSync, existsSync } from "fs"
+import { join } from "path"
+import { homedir } from "os"
 
 export const consoleExporter: SpanExporter = {
   export(span: SpanData) {
     console.log("[Span]", JSON.stringify(span, null, 2))
   },
+}
+
+export class FileSpanExporter implements SpanExporter {
+  private filePath: string
+
+  constructor(filePath?: string) {
+    const dir = join(homedir(), ".agent-ts", "spans")
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true })
+    }
+    this.filePath = filePath || join(dir, "spans.jsonl")
+  }
+
+  export(span: SpanData): void {
+    appendFileSync(this.filePath, JSON.stringify(span) + "\n")
+  }
 }
 
 export class OTelSpanExporter implements SpanExporter {
