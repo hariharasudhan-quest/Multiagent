@@ -3,6 +3,9 @@ import type { Part } from "@opencode-ai/sdk"
 import { randomUUID } from "crypto"
 import { store } from "./store"
 import { buildTrace, appendTrace, loadProxyInsight, loadProxyTokens } from "./tracer"
+import { AgentSpan, OTelSpanExporter } from "./span"
+import type { SpanContext } from "./types"
+import { setTraceContext } from "./traceContext"
 
 const MODEL = {
   providerID: "google",
@@ -39,7 +42,7 @@ async function waitForSessionIdle(
     const finish = () => {
       if (quietTimer) clearTimeout(quietTimer)
       if (typeof (sub as any).unsubscribe === "function") {
-        ;(sub as any).unsubscribe().catch(() => {})
+        ; (sub as any).unsubscribe().catch(() => { })
       }
       resolve(events)
     }
@@ -52,42 +55,42 @@ async function waitForSessionIdle(
     // Absolute timeout
     const absTimer = setTimeout(finish, timeoutMs)
 
-    ;(async () => {
-      try {
-        for await (const event of sub.stream) {
-          const e = event as Record<string, unknown>
+      ; (async () => {
+        try {
+          for await (const event of sub.stream) {
+            const e = event as Record<string, unknown>
 
-          // Only track events for our session
-          const evtSession =
-            (e.sessionID as string) ??
-            ((e.data as any)?.sessionID as string) ??
-            ""
-          if (evtSession && evtSession !== sessionId) continue
+            // Only track events for our session
+            const evtSession =
+              (e.sessionID as string) ??
+              ((e.data as any)?.sessionID as string) ??
+              ""
+            if (evtSession && evtSession !== sessionId) continue
 
-          events.push(e)
-          store.addTrace({
-            id: randomUUID().slice(0, 8),
-            type: String(e.type ?? "unknown"),
-            timestamp: new Date().toISOString(),
-            data: e,
-          })
+            events.push(e)
+            store.addTrace({
+              id: randomUUID().slice(0, 8),
+              type: String(e.type ?? "unknown"),
+              timestamp: new Date().toISOString(),
+              data: e,
+            })
 
-          // Mark done when we see explicit finish events
-          const t = String(e.type ?? "")
-          if (t === "session.idle" || t === "agent.done" || t === "run.complete") {
-            clearTimeout(absTimer)
-            finish()
-            return
+            // Mark done when we see explicit finish events
+            const t = String(e.type ?? "")
+            if (t === "session.idle" || t === "agent.done" || t === "run.complete") {
+              clearTimeout(absTimer)
+              finish()
+              return
+            }
+
+            resetQuietTimer()
           }
-
-          resetQuietTimer()
+        } catch {
+          // stream ended
         }
-      } catch {
-        // stream ended
-      }
-      clearTimeout(absTimer)
-      finish()
-    })()
+        clearTimeout(absTimer)
+        finish()
+      })()
 
     // Start the quiet timer now in case no events arrive at all
     resetQuietTimer()
@@ -109,15 +112,26 @@ export async function runAgent(
   agentName: string,
   prompt: string,
   existingSessionId?: string,
+  parentContext?: { traceId: string; spanId: string },
 ): Promise<RunResult> {
   const client = await getClient()
   const start = Date.now()
   let sessionId: string
 
+  // Create span for this agent execution
+  const span = parentContext
+    ? AgentSpan.child(parentContext, `agent.${agentName}`, undefined, existingSessionId, new OTelSpanExporter())
+    : AgentSpan.root(`agent.${agentName}`, undefined, existingSessionId, new OTelSpanExporter())
+
+  span.setAgent(agentName)
+  span.setModel(MODEL.modelID, MODEL.providerID)
+  span.addEvent("agent.started")
+
   try {
     if (existingSessionId) {
       sessionId = existingSessionId
       console.log(`[${agentName}] reusing session ${sessionId}`)
+      span.addEvent("session.reused", { sessionId })
     } else {
       console.log(`[${agentName}] creating session...`)
       const sessionResp = await client.session.create({
@@ -134,7 +148,12 @@ export async function runAgent(
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       })
+      span.addEvent("session.created", { sessionId })
     }
+
+    // Store trace context for proxy to use
+    const ctx = span.getContext()
+    setTraceContext(sessionId, ctx)
 
     // Add current user prompt to session history (for our own records only)
     store.addToSessionHistory(sessionId, "user", prompt)
@@ -143,6 +162,8 @@ export async function runAgent(
 
     // Start listening for events BEFORE sending the prompt so we don't miss any
     const idlePromise = waitForSessionIdle(client, sessionId)
+
+    span.addEvent("llm.request.sent", { historyTurns: history.length })
 
     const result = await client.session.prompt({
       path: { id: sessionId },
@@ -196,6 +217,8 @@ export async function runAgent(
       }
     }
 
+    span.addEvent("llm.response.received")
+
     // Store assistant response in session history
     store.addToSessionHistory(sessionId, "assistant", responseText)
 
@@ -210,6 +233,17 @@ export async function runAgent(
       latencyMs: Date.now() - start,
     }))
 
+    // Record metrics
+    const inputTokens = info?.tokens?.input ?? 0
+    const outputTokens = info?.tokens?.output ?? 0
+    const filesModified = extractFiles(parts)
+
+    span.recordTokenUsage(inputTokens, outputTokens)
+    span.recordFilesModified(filesModified)
+    span.recordOutputLength(responseText.length)
+    span.markSuccess()
+    span.end()
+
     return {
       sessionId,
       agentUsed: agentName,
@@ -221,6 +255,8 @@ export async function runAgent(
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
+    span.markError(msg)
+    span.end()
     return {
       sessionId: existingSessionId ?? "",
       agentUsed: agentName,

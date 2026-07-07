@@ -1,3 +1,4 @@
+import { initializeOtel } from "./otel"
 import express, { Request, Response } from "express"
 import { fileURLToPath } from "url"
 import { dirname, join } from "path"
@@ -14,6 +15,9 @@ interface Job {
 }
 
 const jobs = new Map<string, Job>()
+
+// Initialize OpenTelemetry at the very top
+initializeOtel()
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
