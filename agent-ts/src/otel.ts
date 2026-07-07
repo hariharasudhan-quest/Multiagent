@@ -1,12 +1,12 @@
 import { NodeSDK } from '@opentelemetry/sdk-node'
 import { Resource } from '@opentelemetry/resources'
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions'
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc'
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-grpc'
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http'
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http'
 import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express'
-import { getAutoInstrumentations } from '@opentelemetry/auto-instrumentations'
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node'
 
 const resource = Resource.default().merge(
   new Resource({
@@ -17,14 +17,14 @@ const resource = Resource.default().merge(
 )
 
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.DD_TRACE_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318',
+  url: process.env.DD_TRACE_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
   headers: {
     'dd-api-key': process.env.DD_API_KEY || '',
   },
 })
 
 const metricExporter = new OTLPMetricExporter({
-  url: process.env.DD_METRIC_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318',
+  url: process.env.DD_METRIC_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/metrics',
   headers: {
     'dd-api-key': process.env.DD_API_KEY || '',
   },
@@ -38,7 +38,7 @@ const sdk = new NodeSDK({
     exportIntervalMillis: 10000,
   }),
   instrumentations: [
-    getAutoInstrumentations({
+    getNodeAutoInstrumentations({
       '@opentelemetry/instrumentation-http': { enabled: true },
       '@opentelemetry/instrumentation-express': { enabled: true },
     }),
