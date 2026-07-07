@@ -5,8 +5,8 @@ import { store } from "./store"
 import { buildTrace, appendTrace, loadProxyInsight, loadProxyTokens } from "./tracer"
 
 const MODEL = {
-  providerID: "ollama",
-  modelID: process.env.OPENCODE_MODEL_ID ?? "qwen3.5:9b-32k",
+  providerID: "google",
+  modelID: "gemini-2.5-flash",
 }
 
 type OpenCodeClient = ReturnType<typeof createOpencodeClient>
@@ -139,10 +139,6 @@ export async function runAgent(
     // Add current user prompt to session history (for our own records only)
     store.addToSessionHistory(sessionId, "user", prompt)
 
-    // OpenCode handles conversation history natively via the session.
-    // Do NOT duplicate it here — that causes context bloat and model confusion.
-    const promptWithContext = prompt
-
     console.log(`[${agentName}] sending prompt (session=${sessionId})...`)
 
     // Start listening for events BEFORE sending the prompt so we don't miss any
@@ -153,7 +149,7 @@ export async function runAgent(
       body: {
         agent: agentName,
         model: MODEL,
-        parts: [{ type: "text", text: promptWithContext }],
+        parts: [{ type: "text", text: prompt }],
       },
     })
 

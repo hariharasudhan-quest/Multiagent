@@ -2,7 +2,7 @@ import { randomUUID } from "crypto"
 import fs from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
-import type { Task, PhaseResult, TraceEvent, SessionRecord } from "./types"
+import type { Task, TraceEvent, SessionRecord } from "./types"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SESSIONS_FILE = path.join(__dirname, "..", "data", "sessions.json")
@@ -41,8 +41,6 @@ class TaskStore {
       id: randomUUID().slice(0, 8),
       description,
       status: "pending",
-      currentPhase: null,
-      phases: {},
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -56,21 +54,6 @@ class TaskStore {
 
   list(): Task[] {
     return Array.from(this.tasks.values())
-  }
-
-  setStatus(id: string, status: Task["status"]): void {
-    const task = this.tasks.get(id)
-    if (!task) return
-    task.status = status
-    task.updatedAt = new Date().toISOString()
-  }
-
-  recordPhase(id: string, phase: string, result: PhaseResult): void {
-    const task = this.tasks.get(id)
-    if (!task) return
-    task.phases[phase] = result
-    task.currentPhase = phase
-    task.updatedAt = new Date().toISOString()
   }
 
   addTrace(event: TraceEvent): void {

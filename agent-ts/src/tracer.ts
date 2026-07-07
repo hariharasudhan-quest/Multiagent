@@ -6,21 +6,11 @@ import type { Part } from "@opencode-ai/sdk"
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const SESSIONS_DIR = path.join(__dirname, "..", "data", "sessions")
-const HARNESS_DIR = path.join(__dirname, "..", "..", "harness")
 const PROXY_LOG = path.join(__dirname, "..", "logs", "raw_traffic.json")
 
 function ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
-  }
-}
-
-function readHarness(agent: string): string {
-  const filePath = path.join(HARNESS_DIR, `${agent}.md`)
-  try {
-    return fs.readFileSync(filePath, "utf8").trim()
-  } catch {
-    return ""
   }
 }
 
@@ -240,7 +230,6 @@ export interface TraceEntry {
   timestamp: string
   session_id: string
   agent: string
-  harness: string
   user_prompt: string
   response: string
   tokens: { input: number; output: number }
@@ -304,7 +293,6 @@ export function buildTrace(params: {
     timestamp: new Date().toISOString(),
     session_id: params.sessionId,
     agent: params.agent,
-    harness: readHarness(params.agent),
     user_prompt: params.userPrompt,
     response: params.response,
     tokens: params.tokens,

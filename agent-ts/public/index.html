@@ -81,10 +81,29 @@
       border-radius: 10px;
       background: #30363d;
       color: #8b949e;
+      margin-left: auto;
     }
     .agent-btn.active .badge {
       background: rgba(255,255,255,0.2);
       color: #fff;
+    }
+    .badge-native {
+      background: #1a3a2a !important;
+      color: #3fb950 !important;
+    }
+    .badge-custom {
+      background: #2d2a1a !important;
+      color: #e3b341 !important;
+    }
+    .badge-sub {
+      background: #1a2a3a !important;
+      color: #58a6ff !important;
+    }
+    .agent-btn.active .badge-native,
+    .agent-btn.active .badge-custom,
+    .agent-btn.active .badge-sub {
+      background: rgba(255,255,255,0.2) !important;
+      color: #fff !important;
     }
     .session-info {
       margin-top: auto;
@@ -331,61 +350,73 @@
     });
 
     async function loadAgents() {
+      const container = document.getElementById('agentList');
       try {
         const res = await fetch(`${API}/agents`);
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || `HTTP ${res.status}`);
+        }
         const agents = await res.json();
         renderAgents(agents);
       } catch (err) {
         console.error('Failed to load agents:', err);
+        container.innerHTML = `<div class="agent-group"><h3 style="color:#f85149">Error loading agents</h3><p style="font-size:12px;color:#8b949e;padding:4px">${err.message}</p><p style="font-size:11px;color:#8b949e;padding:4px">Make sure <code>opencode serve</code> is running on port 4096.</p></div>`;
       }
+    }
+
+    function agentBtn(a) {
+      const isNative = a.native;
+      const isSub = a.mode === 'subagent';
+      const badgeClass = isSub ? 'badge-sub' : (isNative ? 'badge-native' : 'badge-custom');
+      const badgeLabel = isSub ? 'subagent' : (isNative ? 'native' : 'custom');
+      const desc = a.description ? `title="${a.description.replace(/"/g,'&quot;')}"` : '';
+      return `<button class="agent-btn" data-agent="${a.name}" onclick="selectAgent('${a.name}')" ${desc}>
+        ${a.name}
+        <span class="badge ${badgeClass}">${badgeLabel}</span>
+      </button>`;
     }
 
     function renderAgents(agents) {
       const container = document.getElementById('agentList');
-      const primaries = agents.filter(a => a.mode === 'primary');
-      const subagents = agents.filter(a => a.mode === 'subagent');
-      const others = agents.filter(a => a.mode !== 'primary' && a.mode !== 'subagent');
+
+      const HIDDEN = ['compaction', 'summary', 'title'];
+      const visible = agents.filter(a => !HIDDEN.includes(a.name));
+
+      const nativePrimary = visible.filter(a => a.native && a.mode === 'primary');
+      const nativeSub    = visible.filter(a => a.native && a.mode === 'subagent');
+      const customPrimary = visible.filter(a => !a.native && a.mode === 'primary');
+      const customSub    = visible.filter(a => !a.native && a.mode === 'subagent');
 
       let html = '';
 
-      if (primaries.length) {
-        html += '<div class="agent-group"><h3>Primary</h3>';
-        primaries.forEach(a => {
-          html += `<button class="agent-btn" data-agent="${a.name}" onclick="selectAgent('${a.name}')">
-            ${a.name}
-            <span class="badge">primary</span>
-          </button>`;
-        });
+      if (nativePrimary.length) {
+        html += '<div class="agent-group"><h3>OpenCode — Primary</h3>';
+        nativePrimary.forEach(a => { html += agentBtn(a); });
         html += '</div>';
       }
-
-      if (subagents.length) {
-        html += '<div class="agent-group"><h3>Subagents</h3>';
-        subagents.forEach(a => {
-          html += `<button class="agent-btn" data-agent="${a.name}" onclick="selectAgent('${a.name}')">
-            ${a.name}
-            <span class="badge">sub</span>
-          </button>`;
-        });
+      if (nativeSub.length) {
+        html += '<div class="agent-group"><h3>OpenCode — Subagents</h3>';
+        nativeSub.forEach(a => { html += agentBtn(a); });
         html += '</div>';
       }
-
-      if (others.length) {
-        html += '<div class="agent-group"><h3>Other</h3>';
-        others.forEach(a => {
-          html += `<button class="agent-btn" data-agent="${a.name}" onclick="selectAgent('${a.name}')">
-            ${a.name}
-            <span class="badge">${a.mode || 'all'}</span>
-          </button>`;
-        });
+      if (customPrimary.length) {
+        html += '<div class="agent-group"><h3>Custom — Primary</h3>';
+        customPrimary.forEach(a => { html += agentBtn(a); });
+        html += '</div>';
+      }
+      if (customSub.length) {
+        html += '<div class="agent-group"><h3>Custom — Subagents</h3>';
+        customSub.forEach(a => { html += agentBtn(a); });
         html += '</div>';
       }
 
       container.innerHTML = html;
 
-      // Auto-select first primary
-      if (primaries.length && !currentAgent) {
-        selectAgent(primaries[0].name);
+      // Auto-select first native primary
+      const firstPrimary = nativePrimary[0] || customPrimary[0];
+      if (firstPrimary && !currentAgent) {
+        selectAgent(firstPrimary.name);
       }
     }
 

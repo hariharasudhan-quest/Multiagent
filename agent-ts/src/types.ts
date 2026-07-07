@@ -1,24 +1,9 @@
 export type TaskStatus = "pending" | "running" | "done" | "failed"
 
-export interface PhaseResult {
-  agent: string
-  agentUsed: string
-  sessionId: string
-  output: string
-  filesModified: string[]
-  tokens: { input: number; output: number }
-  latencyMs: number
-  success: boolean
-  error?: string
-  timestamp: string
-}
-
 export interface Task {
   id: string
   description: string
   status: TaskStatus
-  currentPhase: string | null
-  phases: Record<string, PhaseResult>
   createdAt: string
   updatedAt: string
 }
