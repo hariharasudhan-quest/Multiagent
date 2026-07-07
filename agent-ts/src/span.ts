@@ -2,7 +2,8 @@ import { randomUUID } from "crypto"
 import { trace, Span as OTelSpan, SpanKind, Context } from "@opentelemetry/api"
 import { SpanStatusCode } from "@opentelemetry/api"
 import { SpanBuilder } from "./span/SpanBuilder"
-import type { SpanContext, SpanData, SpanExporter, SpanStatus, SpanEvent } from "./types"
+import { SpanStatus } from "./types"
+import type { SpanContext, SpanData, SpanExporter, SpanEvent } from "./types"
 
 export const consoleExporter: SpanExporter = {
   export(span: SpanData) {
@@ -213,4 +214,5 @@ export class AgentSpan {
   }
 }
 
-export type { SpanContext, SpanData, SpanExporter, SpanStatus, SpanEvent } from "./types"
+export { SpanStatus } from "./types"
+export type { SpanContext, SpanData, SpanExporter, SpanEvent } from "./types"
