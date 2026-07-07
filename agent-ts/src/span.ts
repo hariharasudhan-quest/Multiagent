@@ -46,7 +46,7 @@ export class OTelSpanExporter implements SpanExporter {
     })
 
     spanData.events.forEach((event) => {
-      span.addEvent(event.name, event.attributes, event.timestamp)
+      span.addEvent(event.name, event.attributes as any, event.timestamp)
     })
 
     if (spanData.status.code === (SpanStatus.OK as number)) {
@@ -54,10 +54,10 @@ export class OTelSpanExporter implements SpanExporter {
     } else if (spanData.status.code === (SpanStatus.ERROR as number)) {
       span.setStatus({
         code: SpanStatusCode.ERROR,
-        description: spanData.status.message,
+        message: spanData.status.message,
       })
     } else if (spanData.status.code === (SpanStatus.CANCELLED as number)) {
-      span.setStatus({ code: SpanStatusCode.ERROR, description: "Cancelled" })
+      span.setStatus({ code: SpanStatusCode.ERROR, message: "Cancelled" })
     }
 
     span.end(spanData.endTime)

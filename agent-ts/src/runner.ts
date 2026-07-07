@@ -4,6 +4,7 @@ import { randomUUID } from "crypto"
 import { store } from "./store"
 import { AgentSpan, OTelSpanExporter } from "./span"
 import type { SpanContext } from "./types"
+import { setTraceContext } from "./traceContext"
 
 const MODEL = {
   providerID: "ollama",
@@ -74,12 +75,6 @@ export async function runAgent(
   span.setModel(MODEL.modelID, MODEL.providerID)
   span.addEvent("agent.started")
 
-  // Store trace context for proxy to use
-  const ctx = span.getContext()
-  if (sessionId) {
-    setTraceContext(sessionId, ctx)
-  }
-
   try {
     if (existingSessionId) {
       sessionId = existingSessionId
@@ -103,6 +98,10 @@ export async function runAgent(
       })
       span.addEvent("session.created", { sessionId })
     }
+
+    // Store trace context for proxy to use
+    const ctx = span.getContext()
+    setTraceContext(sessionId, ctx)
 
     // Add current user prompt to session history
     store.addToSessionHistory(sessionId, "user", prompt)
