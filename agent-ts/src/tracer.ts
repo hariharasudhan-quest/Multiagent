@@ -6,11 +6,28 @@ import type { Part } from "@opencode-ai/sdk"
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const SESSIONS_DIR = path.join(__dirname, "..", "data", "sessions")
-const PROXY_LOG = path.join(__dirname, "..", "logs", "raw_traffic.json")
+const PROXY_LOG = path.join(__dirname, "..", "logs", "raw_traffic.jsonl")
 
 function ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
+  }
+}
+
+/** Read the JSONL proxy log file as an array of objects */
+function readProxyLog(): any[] {
+  try {
+    const raw = fs.readFileSync(PROXY_LOG, "utf8")
+    if (!raw.trim()) return []
+    return raw
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) => {
+        try { return JSON.parse(line) } catch { return null }
+      })
+      .filter(Boolean)
+  } catch {
+    return []
   }
 }
 
@@ -76,15 +93,14 @@ const TOOL_KEYWORDS = ["tool", "write", "edit", "bash", "read", "glob", "grep", 
 
 export function loadProxyTokens(runTimestamp: string, latencyMs: number): { input: number; output: number } | null {
   try {
-    const raw = fs.readFileSync(PROXY_LOG, "utf8")
-    if (!raw.trim()) return null
-    const entries: any[] = JSON.parse(raw)
+    const entries = readProxyLog()
+    if (!entries.length) return null
 
     const runEnd = new Date(runTimestamp).getTime()
     const runStart = runEnd - latencyMs - 5000
 
     const matching = entries.filter((e) => {
-      const ts = new Date(e?.meta?.ts ?? 0).getTime()
+      const ts = new Date(e?.ts ?? 0).getTime()
       return ts >= runStart && ts <= runEnd + 5000
     })
 
@@ -93,11 +109,14 @@ export function loadProxyTokens(runTimestamp: string, latencyMs: number): { inpu
     let input = 0
     let output = 0
     for (const entry of matching) {
-      const t = entry?.metrics?.tokens
-      if (t) {
-        input += t.prompt_tokens ?? 0
-        output += t.completion_tokens ?? 0
+      const resp = entry?.response
+      if (resp?.usage) {
+        input += resp.usage.prompt_tokens ?? resp.usage.input_tokens ?? 0
+        output += resp.usage.completion_tokens ?? resp.usage.output_tokens ?? 0
       }
+      // Ollama native format
+      if (resp?.prompt_eval_count !== undefined) input += resp.prompt_eval_count
+      if (resp?.eval_count !== undefined) output += resp.eval_count
     }
     return { input, output }
   } catch {
@@ -107,16 +126,15 @@ export function loadProxyTokens(runTimestamp: string, latencyMs: number): { inpu
 
 export function loadProxyInsight(runTimestamp: string, latencyMs: number): ProxyInsight | null {
   try {
-    const raw = fs.readFileSync(PROXY_LOG, "utf8")
-    if (!raw.trim()) return null
-    const entries: any[] = JSON.parse(raw)
+    const entries = readProxyLog()
+    if (!entries.length) return null
 
     const runEnd = new Date(runTimestamp).getTime()
     const runStart = runEnd - latencyMs - 5000
 
     // Find proxy entries whose ts falls within the run window
     const matching = entries.filter((e) => {
-      const ts = new Date(e?.meta?.ts ?? 0).getTime()
+      const ts = new Date(e?.ts ?? 0).getTime()
       return ts >= runStart && ts <= runEnd + 5000
     })
 

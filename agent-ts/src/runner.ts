@@ -8,8 +8,8 @@ import type { SpanContext } from "./types"
 import { setTraceContext } from "./traceContext"
 
 const MODEL = {
-  providerID: "google",
-  modelID: "gemini-2.5-flash",
+  providerID: "ollama",
+  modelID: process.env.OPENCODE_MODEL_ID ?? "qwen3.5:9b-32k",
 }
 
 type OpenCodeClient = ReturnType<typeof createOpencodeClient>
@@ -30,6 +30,7 @@ export async function getClient(): Promise<OpenCodeClient> {
 async function waitForSessionIdle(
   client: OpenCodeClient,
   sessionId: string,
+  promptPromise: Promise<any>,
   quietMs = 5000,
   timeoutMs = 30 * 60 * 1000,
 ): Promise<Array<Record<string, unknown>>> {
@@ -38,6 +39,7 @@ async function waitForSessionIdle(
 
   return new Promise((resolve) => {
     let quietTimer: ReturnType<typeof setTimeout> | null = null
+    let hasPromptReturned = false
 
     const finish = () => {
       if (quietTimer) clearTimeout(quietTimer)
@@ -49,11 +51,23 @@ async function waitForSessionIdle(
 
     const resetQuietTimer = () => {
       if (quietTimer) clearTimeout(quietTimer)
-      quietTimer = setTimeout(finish, quietMs)
+      // Only start the idle countdown if the LLM has actually finished generating its response!
+      if (hasPromptReturned) {
+        quietTimer = setTimeout(finish, quietMs)
+      }
     }
 
     // Absolute timeout
     const absTimer = setTimeout(finish, timeoutMs)
+
+    // Wait for the prompt to return, then start the idle timer
+    promptPromise.then(() => {
+      hasPromptReturned = true
+      resetQuietTimer()
+    }).catch(() => {
+      hasPromptReturned = true
+      resetQuietTimer()
+    })
 
       ; (async () => {
         try {
@@ -91,9 +105,6 @@ async function waitForSessionIdle(
         clearTimeout(absTimer)
         finish()
       })()
-
-    // Start the quiet timer now in case no events arrive at all
-    resetQuietTimer()
   })
 }
 
@@ -160,12 +171,9 @@ export async function runAgent(
 
     console.log(`[${agentName}] sending prompt (session=${sessionId})...`)
 
-    // Start listening for events BEFORE sending the prompt so we don't miss any
-    const idlePromise = waitForSessionIdle(client, sessionId)
+    span.addEvent("llm.request.sent", { historyTurns: store.getSession(sessionId)?.history.length ?? 0 })
 
-    span.addEvent("llm.request.sent", { historyTurns: history.length })
-
-    const result = await client.session.prompt({
+    const promptPromise = client.session.prompt({
       path: { id: sessionId },
       body: {
         agent: agentName,
@@ -173,6 +181,11 @@ export async function runAgent(
         parts: [{ type: "text", text: prompt }],
       },
     })
+
+    // Start listening for events BEFORE we wait for the prompt to return
+    const idlePromise = waitForSessionIdle(client, sessionId, promptPromise)
+
+    const result = await promptPromise
 
     // Wait until the session goes quiet (all tool calls executed)
     console.log(`[${agentName}] prompt returned, waiting for session to go idle...`)
