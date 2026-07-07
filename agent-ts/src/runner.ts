@@ -2,13 +2,14 @@ import { createOpencodeClient } from "@opencode-ai/sdk"
 import type { Part } from "@opencode-ai/sdk"
 import { randomUUID } from "crypto"
 import { store } from "./store"
+import { buildTrace, appendTrace, loadProxyInsight, loadProxyTokens } from "./tracer"
 import { AgentSpan, OTelSpanExporter } from "./span"
 import type { SpanContext } from "./types"
 import { setTraceContext } from "./traceContext"
 
 const MODEL = {
-  providerID: "ollama",
-  modelID: process.env.OPENCODE_MODEL_ID ?? "qwen3:8b",
+  providerID: "google",
+  modelID: "gemini-2.5-flash",
 }
 
 type OpenCodeClient = ReturnType<typeof createOpencodeClient>
@@ -21,28 +22,79 @@ export async function getClient(): Promise<OpenCodeClient> {
   const OPENCODE_URL = process.env.OPENCODE_URL ?? "http://127.0.0.1:4096"
   _client = createOpencodeClient({ baseUrl: OPENCODE_URL })
 
-  startEventStream(_client)
-
   return _client
 }
 
-function startEventStream(client: OpenCodeClient): void {
-  ;(async () => {
-    try {
-      const sub = await client.event.subscribe()
-      for await (const event of sub.stream) {
-        const e = event as Record<string, unknown>
-        store.addTrace({
-          id: randomUUID().slice(0, 8),
-          type: String(e.type ?? "unknown"),
-          timestamp: new Date().toISOString(),
-          data: e,
-        })
+// Resolves when the session goes idle (no new events for `quietMs` ms)
+// or after `timeoutMs` ms absolute. Returns collected events.
+async function waitForSessionIdle(
+  client: OpenCodeClient,
+  sessionId: string,
+  quietMs = 5000,
+  timeoutMs = 30 * 60 * 1000,
+): Promise<Array<Record<string, unknown>>> {
+  const events: Array<Record<string, unknown>> = []
+  const sub = await client.event.subscribe()
+
+  return new Promise((resolve) => {
+    let quietTimer: ReturnType<typeof setTimeout> | null = null
+
+    const finish = () => {
+      if (quietTimer) clearTimeout(quietTimer)
+      if (typeof (sub as any).unsubscribe === "function") {
+        ; (sub as any).unsubscribe().catch(() => { })
       }
-    } catch {
-      // stream ended or server stopped — no-op
+      resolve(events)
     }
-  })()
+
+    const resetQuietTimer = () => {
+      if (quietTimer) clearTimeout(quietTimer)
+      quietTimer = setTimeout(finish, quietMs)
+    }
+
+    // Absolute timeout
+    const absTimer = setTimeout(finish, timeoutMs)
+
+      ; (async () => {
+        try {
+          for await (const event of sub.stream) {
+            const e = event as Record<string, unknown>
+
+            // Only track events for our session
+            const evtSession =
+              (e.sessionID as string) ??
+              ((e.data as any)?.sessionID as string) ??
+              ""
+            if (evtSession && evtSession !== sessionId) continue
+
+            events.push(e)
+            store.addTrace({
+              id: randomUUID().slice(0, 8),
+              type: String(e.type ?? "unknown"),
+              timestamp: new Date().toISOString(),
+              data: e,
+            })
+
+            // Mark done when we see explicit finish events
+            const t = String(e.type ?? "")
+            if (t === "session.idle" || t === "agent.done" || t === "run.complete") {
+              clearTimeout(absTimer)
+              finish()
+              return
+            }
+
+            resetQuietTimer()
+          }
+        } catch {
+          // stream ended
+        }
+        clearTimeout(absTimer)
+        finish()
+      })()
+
+    // Start the quiet timer now in case no events arrive at all
+    resetQuietTimer()
+  })
 }
 
 export interface RunResult {
@@ -103,20 +155,14 @@ export async function runAgent(
     const ctx = span.getContext()
     setTraceContext(sessionId, ctx)
 
-    // Add current user prompt to session history
+    // Add current user prompt to session history (for our own records only)
     store.addToSessionHistory(sessionId, "user", prompt)
 
-    // Build full conversation context from history
-    const history = store.getSession(sessionId)?.history ?? []
-    const historyText = history
-      .map((h) => (h.role === "user" ? `User: ${h.text}` : `Assistant: ${h.text}`))
-      .join("\n\n")
+    console.log(`[${agentName}] sending prompt (session=${sessionId})...`)
 
-    const promptWithContext = historyText
-      ? `Previous conversation:\n\n${historyText}\n\nContinue the conversation.`
-      : prompt
+    // Start listening for events BEFORE sending the prompt so we don't miss any
+    const idlePromise = waitForSessionIdle(client, sessionId)
 
-    console.log(`[${agentName}] sending prompt (history=${history.length} turns)...`)
     span.addEvent("llm.request.sent", { historyTurns: history.length })
 
     const result = await client.session.prompt({
@@ -124,24 +170,68 @@ export async function runAgent(
       body: {
         agent: agentName,
         model: MODEL,
-        parts: [{ type: "text", text: promptWithContext }],
+        parts: [{ type: "text", text: prompt }],
       },
-      // Note: OpenCode SDK may not support custom headers here
-      // The proxy will create its own spans based on the trace context
-      // We'll need to ensure the proxy can access the trace context
     })
 
-    console.log(`[${agentName}] prompt completed in ${Date.now() - start}ms`)
-    console.log("[debug] result keys:", Object.keys(result))
-    console.log("[debug] result.data:", JSON.stringify(result.data, null, 2))
+    // Wait until the session goes quiet (all tool calls executed)
+    console.log(`[${agentName}] prompt returned, waiting for session to go idle...`)
+    await idlePromise
+    console.log(`[${agentName}] session idle after ${Date.now() - start}ms`)
+
     const parts: Part[] = result.data?.parts ?? []
     const info = result.data?.info
-    const responseText = extractText(parts)
+
+    // SDK often returns 0 tokens for local models; fallback to proxy log
+    const sdkTokens = { input: info?.tokens?.input ?? 0, output: info?.tokens?.output ?? 0 }
+    const proxyTokens = loadProxyTokens(new Date().toISOString(), Date.now() - start)
+    const tokens = sdkTokens.input > 0 || sdkTokens.output > 0
+      ? sdkTokens
+      : (proxyTokens ?? sdkTokens)
+
+    let responseText = extractText(parts)
+
+    // Always check proxy for tool calls — model often creates files
+    // but returns useless text like "I made an error..."
+    const insight = loadProxyInsight(new Date().toISOString(), Date.now() - start)
+    const proxyTools = insight?.tool_calls_attempted ?? []
+    if (proxyTools.length > 0) {
+      const files = Array.from(
+        new Set(
+          proxyTools
+            .map((tc) => {
+              const args = tc.arguments as Record<string, unknown> | undefined
+              return String(args?.filePath ?? args?.path ?? args?.file_path ?? "")
+            })
+            .filter(Boolean),
+        ),
+      )
+      const fileSummary = files.length > 0
+        ? `\n\n📁 Created ${files.length} file(s):\n${files.map((f) => `  • ${f}`).join("\n")}`
+        : `\n\n🔧 Used tools: ${[...new Set(proxyTools.map((t) => t.tool))].join(", ")}`
+
+      if (!responseText.trim()) {
+        responseText = fileSummary.trim()
+      } else {
+        responseText += fileSummary
+      }
+    }
 
     span.addEvent("llm.response.received")
 
     // Store assistant response in session history
     store.addToSessionHistory(sessionId, "assistant", responseText)
+
+    // Append run trace (harness + prompt + response + tool decisions)
+    appendTrace(buildTrace({
+      agent: agentName,
+      sessionId,
+      userPrompt: prompt,
+      response: responseText,
+      parts,
+      tokens,
+      latencyMs: Date.now() - start,
+    }))
 
     // Record metrics
     const inputTokens = info?.tokens?.input ?? 0
@@ -158,11 +248,8 @@ export async function runAgent(
       sessionId,
       agentUsed: agentName,
       text: responseText,
-      filesModified,
-      tokens: {
-        input: inputTokens,
-        output: outputTokens,
-      },
+      filesModified: extractFiles(parts),
+      tokens,
       latencyMs: Date.now() - start,
       success: true,
     }
@@ -184,11 +271,20 @@ export async function runAgent(
 }
 
 function extractText(parts: Part[]): string {
-  return parts
+  const textParts = parts
     .filter((p): p is Extract<Part, { type: "text" }> => p.type === "text")
     .map((p) => p.text)
-    .join("\n")
-    .trim()
+
+  if (textParts.length) {
+    return textParts.join("\n").trim()
+  }
+
+  // Fallback: some responses have reasoning but no text part
+  const reasoningParts = parts
+    .filter((p): p is Extract<Part, { type: "reasoning" }> => p.type === "reasoning")
+    .map((p) => p.text)
+
+  return reasoningParts.join("\n").trim()
 }
 
 function extractFiles(parts: Part[]): string[] {
