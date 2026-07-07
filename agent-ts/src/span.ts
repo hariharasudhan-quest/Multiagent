@@ -30,6 +30,20 @@ export class FileSpanExporter implements SpanExporter {
   }
 }
 
+export class CompositeExporter implements SpanExporter {
+  constructor(private exporters: SpanExporter[]) {}
+
+  export(span: SpanData): void {
+    for (const ex of this.exporters) {
+      try {
+        ex.export(span)
+      } catch {
+        // ignore individual exporter failures
+      }
+    }
+  }
+}
+
 export class OTelSpanExporter implements SpanExporter {
   export(spanData: SpanData): void {
     const tracer = trace.getTracer("agent-ts", "1.0.0")

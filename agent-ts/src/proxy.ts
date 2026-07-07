@@ -18,7 +18,7 @@ const LOG_FILE = path.join(LOG_DIR, "raw_traffic.jsonl")
 fs.mkdirSync(LOG_DIR, { recursive: true })
 
 const client: AxiosInstance = axios.create({
-  timeout: 120_000,
+  timeout: 600_000,
   validateStatus: () => true,
 })
 
