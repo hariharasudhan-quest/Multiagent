@@ -3,7 +3,7 @@ import type { Part } from "@opencode-ai/sdk"
 import { randomUUID } from "crypto"
 import { store } from "./store"
 import { buildTrace, appendTrace, loadProxyInsight, loadProxyTokens } from "./tracer"
-import { AgentSpan, OTelSpanExporter } from "./span"
+import { AgentSpan, CompositeExporter, FileSpanExporter, OTelSpanExporter } from "./span"
 import type { SpanContext } from "./types"
 import { setTraceContext } from "./traceContext"
 
@@ -129,10 +129,11 @@ export async function runAgent(
   const start = Date.now()
   let sessionId: string
 
-  // Create span for this agent execution
+  // Create span for this agent execution — exports to both local JSON and OTel
+  const exporter = new CompositeExporter([new FileSpanExporter(), new OTelSpanExporter()])
   const span = parentContext
-    ? AgentSpan.child(parentContext, `agent.${agentName}`, undefined, existingSessionId, new OTelSpanExporter())
-    : AgentSpan.root(`agent.${agentName}`, undefined, existingSessionId, new OTelSpanExporter())
+    ? AgentSpan.child(parentContext, `agent.${agentName}`, undefined, existingSessionId, exporter)
+    : AgentSpan.root(`agent.${agentName}`, undefined, existingSessionId, exporter)
 
   span.setAgent(agentName)
   span.setModel(MODEL.modelID, MODEL.providerID)
