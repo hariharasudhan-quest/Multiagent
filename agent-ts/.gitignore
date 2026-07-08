@@ -21,6 +21,9 @@ build/
 out/
 *.tsbuildinfo
 
+# Runtime data
+data/
+
 # IDE / Editor
 .vscode/
 .idea/

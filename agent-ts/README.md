@@ -7,7 +7,7 @@ A TypeScript Express backend for dynamic agent selection and conversational AI u
 ## Prerequisites
 
 - **Node.js** (v20+)
-- **Ollama** running locally (default model: `qwen3:8b`)
+- **Ollama** running locally (default model: `qwen3.5:9b`)
 - **OpenCode** server running on port `4096`
 
 ---
@@ -150,7 +150,7 @@ When you send your first message:
 2. Backend creates a new OpenCode session via `client.session.create()`.
 3. Session metadata is stored in `TaskStore` with an empty `history[]`.
 4. Your prompt is added to history.
-5. The prompt is sent to the agent with full model config (`ollama/qwen3:8b`).
+5. The prompt is sent to the agent with full model config (`ollama/qwen3.5:9b`).
 6. The assistant response is stored in history.
 7. The UI displays the response and saves the returned `sessionId`.
 
@@ -181,7 +181,7 @@ On follow-up messages in the same session:
 |----------|---------|-------------|
 | `PORT` | `3000` | agent-ts server port. |
 | `OPENCODE_URL` | `http://127.0.0.1:4096` | OpenCode server URL. |
-| `OPENCODE_MODEL_ID` | `qwen3:8b` | Ollama model to use. |
+| `OPENCODE_MODEL_ID` | `qwen3.5:9b` | Ollama model to use. |
 | `PROXY_TARGET` | `http://localhost:11434` | LLM server target for proxy. |
 | `PROXY_PORT` | `8080` | Proxy server port. |
 
@@ -193,5 +193,5 @@ On follow-up messages in the same session:
 - **Language**: TypeScript 5.5
 - **Framework**: Express 4
 - **SDK**: `@opencode-ai/sdk`
-- **LLM**: Ollama (`qwen3:8b`)
+- **LLM**: Ollama (`qwen3.5:9b`)
 - **Execution**: `tsx` (TypeScript execution without compilation)

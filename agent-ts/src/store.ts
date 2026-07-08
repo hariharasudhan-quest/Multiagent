@@ -1,9 +1,39 @@
 import { randomUUID } from "crypto"
-import type { Task, PhaseResult, TraceEvent, SessionRecord } from "./types"
+import fs from "fs"
+import path from "path"
+import { fileURLToPath } from "url"
+import type { Task, TraceEvent, SessionRecord } from "./types"
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const SESSIONS_FILE = path.join(__dirname, "..", "data", "sessions.json")
+
+function ensureDir(filePath: string): void {
+  const dir = path.dirname(filePath)
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+}
+
+function loadSessions(): Map<string, SessionRecord> {
+  try {
+    if (!fs.existsSync(SESSIONS_FILE)) return new Map()
+    const raw = fs.readFileSync(SESSIONS_FILE, "utf8")
+    const parsed = JSON.parse(raw) as SessionRecord[]
+    return new Map(parsed.map((s) => [s.id, s]))
+  } catch {
+    return new Map()
+  }
+}
+
+function saveSessions(sessions: Map<string, SessionRecord>): void {
+  ensureDir(SESSIONS_FILE)
+  const data = Array.from(sessions.values())
+  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(data, null, 2), "utf8")
+}
 
 class TaskStore {
   private tasks = new Map<string, Task>()
-  private sessions = new Map<string, SessionRecord>()
+  private sessions = loadSessions()
   private traces: TraceEvent[] = []
 
   create(description: string): Task {
@@ -11,8 +41,6 @@ class TaskStore {
       id: randomUUID().slice(0, 8),
       description,
       status: "pending",
-      currentPhase: null,
-      phases: {},
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -26,21 +54,6 @@ class TaskStore {
 
   list(): Task[] {
     return Array.from(this.tasks.values())
-  }
-
-  setStatus(id: string, status: Task["status"]): void {
-    const task = this.tasks.get(id)
-    if (!task) return
-    task.status = status
-    task.updatedAt = new Date().toISOString()
-  }
-
-  recordPhase(id: string, phase: string, result: PhaseResult): void {
-    const task = this.tasks.get(id)
-    if (!task) return
-    task.phases[phase] = result
-    task.currentPhase = phase
-    task.updatedAt = new Date().toISOString()
   }
 
   addTrace(event: TraceEvent): void {
@@ -58,13 +71,19 @@ class TaskStore {
   addSession(session: Omit<SessionRecord, "history">): void {
     const full: SessionRecord = { ...session, history: [] }
     this.sessions.set(full.id, full)
+    saveSessions(this.sessions)
   }
 
   addToSessionHistory(id: string, role: "user" | "assistant", text: string): void {
     const s = this.sessions.get(id)
     if (s) {
       s.history.push({ role, text })
+      // Cap to prevent unbounded growth
+      if (s.history.length > 20) {
+        s.history = s.history.slice(-20)
+      }
       s.updatedAt = new Date().toISOString()
+      saveSessions(this.sessions)
     }
   }
 
@@ -81,6 +100,7 @@ class TaskStore {
     if (s) {
       s.agent = agent
       s.updatedAt = new Date().toISOString()
+      saveSessions(this.sessions)
     }
   }
 
