@@ -2,12 +2,8 @@ import { createOpencodeClient } from "@opencode-ai/sdk"
 import type { Part } from "@opencode-ai/sdk"
 import { randomUUID } from "crypto"
 import { store } from "./store"
-<<<<<<< HEAD
-import { AgentSpan, CompositeExporter, FileSpanExporter, OTelSpanExporter } from "./span"
-=======
 import { buildTrace, appendTrace, loadProxyInsight, loadProxyTokens } from "./tracer"
-import { AgentSpan, OTelSpanExporter } from "./span"
->>>>>>> 3b04d0a91cf3b181b4720cc1d0a7d6d058ac9c01
+import { AgentSpan, CompositeExporter, FileSpanExporter, OTelSpanExporter } from "./span"
 import type { SpanContext } from "./types"
 import { setTraceContext } from "./traceContext"
 
